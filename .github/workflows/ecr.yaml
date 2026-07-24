@@ -2,6 +2,23 @@ name: Build and deploy app image
 
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Select the target environment'
+        required: true
+        default: 'devl'
+        type: choice
+        options:
+          - devl
+          - prod
+      operation:
+        description: 'Select the Docker image operation to perform'
+        required: true
+        default: 'frontend-image'
+        type: choice
+        options:
+          - frontend-image
+          - backend-image
   push:
     branches:
       - main
@@ -14,9 +31,10 @@ permissions:
   contents: read
 
 jobs:
-  build-and-push:
+  frontend-image:
+    if: ${{ github.event_name == 'push' || github.event.inputs.operation == 'frontend-image' }}
     runs-on: ubuntu-latest
-    environment: devl
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'devl' }}
 
     steps:
       - name: Checkout repository
@@ -32,10 +50,10 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Build, tag, and push frontend image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: sample-app-NewRelic-devl
+          ECR_REPOSITORY: sample-app-newrelic-devl
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" ./app
@@ -49,3 +67,32 @@ jobs:
           SERVICE: sample-app-NewRelic-devl
         run: |
           aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --force-new-deployment --region "$AWS_REGION"
+
+  backend-image:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'backend-image' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'devl' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::139023234293:role/GithubOIDC
+          aws-region: ap-southeast-2
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push backend image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: sample-app-newrelic-devl
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -t "$ECR_REGISTRY/$ECR_REPOSITORY:latest" ./app
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"

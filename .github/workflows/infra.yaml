@@ -17,6 +17,9 @@ on:
         options:
           - plan
           - apply
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   Infrastructure:
