@@ -1,0 +1,10 @@
+aws_region        = "ap-southeast-2"
+project_name      = "sample-app-NewRelic"
+environment       = "devl"
+vpc_id            = "vpc-03ce369b7374fd1e6"
+image_tag         = "latest"
+container_port    = 8080
+desired_count     = 1
+task_cpu          = 256
+task_memory       = 512
+allowed_http_cidr = "0.0.0.0/0"

@@ -1,0 +1,66 @@
+name: Infrastructure deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (devl or prod)'
+        required: true
+        default: 'devl'
+        options:
+          - devl
+          - prod
+      operation:
+        description: 'Infrastructure deployment operation (plan or apply)'
+        required: true
+        default: 'plan'
+        options:
+          - plan
+          - apply
+
+jobs:
+  Infrastructure:
+    name: Deploy Infrastructure with Terraform
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::139023234293:role/InfraDeployerRole
+          aws-region: ap-southeast-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TERRAFORM_DEPLOYMENT_BUCKET }}" \
+            -backend-config="key=${{ github.event.inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=ap-southeast-2"
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        if: ${{ github.event.inputs.operation == 'plan' }}
+        working-directory: terraform
+        run: terraform plan -var="environment=${{ github.event.inputs.environment }}" -var="vpc_id=vpc-03ce369b7374fd1e6" -out=tfplan
+
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.operation == 'apply' }}
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan

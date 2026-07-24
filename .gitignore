@@ -1,0 +1,7 @@
+data.txt
+Manisha-home.pdf
+github-oidc-permissions-policy.json
+github-oidc-trust-policy.json
+terraform/.terraform
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars.example
