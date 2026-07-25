@@ -1,6 +1,6 @@
 # Deployment Runbook
 
-This runbook explains how to deploy, verify, and roll back the sample-app service. The application is a small Flask-based API running in AWS ECS Fargate behind an Application Load Balancer and backed by Amazon ECR.
+This runbook explains how to deploy, verify, and roll back the newrelic-home-take-app service. The application is a small Flask-based API running in AWS ECS Fargate behind an Application Load Balancer and backed by Amazon ECR.
 
 ## 1. Prerequisites
 
@@ -35,10 +35,10 @@ terraform apply -var="environment=devl" -var="vpc_id=vpc-03ce369b7374fd1e6"
 ### Option B — build and push the application image
 ```bash
 cd ../app
-docker build -t sample-app:latest .
+docker build -t newrelic-home-take-app:latest .
 aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com
-docker tag sample-app:latest <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/sample-app-devl:latest
-docker push <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/sample-app-devl:latest
+docker tag newrelic-home-take-app:latest <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/newrelic-home-take-app-devl:latest
+docker push <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/newrelic-home-take-app-devl:latest
 ```
 
 The Terraform configuration uses the image tag supplied in the variables file so that ECS runs the pushed image.
@@ -71,7 +71,7 @@ curl http://<alb-dns-name>/
 curl http://<alb-dns-name>/health
 ```
 
-A successful response should include the sample-app JSON message and a health status of `ok`.
+A successful response should include the newrelic-home-take-app JSON message and a health status of `ok`.
 
 ## 5. Roll back or destroy
 
@@ -92,6 +92,3 @@ terraform destroy -var="environment=devl" -var="vpc_id=vpc-03ce369b7374fd1e6"
 | Task stays pending | The container image was not pulled successfully | Confirm the ECR image exists and the task execution role can pull it |
 | Application is unreachable | Security group or target group health check is failing | Check ALB target group health and the container port |
 
-## 7. Future scope
-
-The deployment is a working baseline for sample-app. The next phase can add HTTPS, a managed database, autoscaling, and a stronger production-grade networking layout.

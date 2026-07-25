@@ -1,10 +1,10 @@
-# sample-app — AWS ECS Fargate deployment with Terraform and GitHub Actions
+# newrelic-home-take-app — AWS ECS Fargate deployment with Terraform and GitHub Actions
 
-sample-app is a lightweight containerized web application that demonstrates a full cloud-native deployment path on AWS. The application is a small Python Flask API that serves a friendly response on the root endpoint and a health check endpoint for readiness and monitoring.
+newrelic-home-take-app is a lightweight containerized web application that demonstrates a full cloud-native deployment path on AWS. The application is a small Python Flask API that serves a friendly response on the root endpoint and a health check endpoint for readiness and monitoring.
 
 ## What the project deploys
 
-This repository provisions a production-style deployment for sample-app on AWS using:
+This repository provisions a production-style deployment for newrelic-home-take-app on AWS using:
 
 - an **Amazon ECR repository** for the application image
 - an **Amazon ECS Fargate cluster** and service
@@ -47,10 +47,10 @@ After the infrastructure is ready, build and push the image:
 
 ```bash
 cd ../app
-docker build -t sample-app:latest .
+docker build -t newrelic-home-take-app:latest .
 aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com
-docker tag sample-app:latest <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/sample-app-devl:latest
-docker push <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/sample-app-devl:latest
+docker tag newrelic-home-take-app:latest <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/newrelic-home-take-app-devl:latest
+docker push <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/newrelic-home-take-app-devl:latest
 ```
 
 ## GitHub deployment flow
@@ -77,7 +77,7 @@ This makes the GitHub pipeline suitable for:
 
 ## Why this solution exists
 
-sample-app is a foundational example for teams that want to learn or standardize on:
+newrelic-home-take-app is a foundational example for teams that want to learn or standardize on:
 
 - container-based deployment on AWS
 - infrastructure as code with Terraform
@@ -85,13 +85,3 @@ sample-app is a foundational example for teams that want to learn or standardize
 - observability with logs and health checks
 - a repeatable path from code commit to live service
 
-## Future scope
-
-The current setup is intentionally simple and demo-friendly. Future enhancements could include:
-
-- HTTPS with an Application Load Balancer and ACM certificate
-- private subnets and stronger network isolation
-- autoscaling based on CPU and memory utilization
-- database or cache integration for a more realistic service
-- separate environments for development, staging, and production
-- CI validation for linting, security scanning, and deployment checks
