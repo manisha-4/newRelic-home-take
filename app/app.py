@@ -8,7 +8,7 @@ app = Flask(__name__)
 @app.get("/")
 def index():
     return jsonify(
-        message="Hello from cass-tutorial!",
+        message="Hello from sample-tutorial!",
         environment=os.getenv("ENVIRONMENT", "dev"),
     )
 
