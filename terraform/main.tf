@@ -100,7 +100,7 @@ resource "aws_iam_role_policy_attachment" "github_ecs" {
 resource "aws_security_group" "alb" {
   name        = "${local.name}-alb"
   description = "Allow inbound HTTP to the application load balancer"
-  vpc_id      = data.aws_vpc.selected.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description = "HTTP"
@@ -127,7 +127,7 @@ resource "aws_security_group" "alb" {
 resource "aws_security_group" "service" {
   name        = "${local.name}-svc"
   description = "Allow inbound HTTP to the ECS service"
-  vpc_id      = data.aws_vpc.selected.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description     = "HTTP from ALB"
@@ -163,7 +163,7 @@ resource "aws_lb_target_group" "app_target_group" {
   port        = var.container_port
   protocol    = "HTTP"
   target_type = "ip"
-  vpc_id      = data.aws_vpc.selected.id
+  vpc_id      = var.vpc_id
 
   health_check {
     path                = "/health"

@@ -25,5 +25,5 @@ output "load_balancer_dns_name" {
 
 output "vpc_id" {
   description = "Existing VPC the app was deployed into."
-  value       = data.aws_vpc.selected.id
+  value       = var.vpc_id
 }
