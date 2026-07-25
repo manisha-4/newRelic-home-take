@@ -14,11 +14,11 @@ on:
       operation:
         description: 'Select the Docker image operation to perform'
         required: true
-        default: 'frontend-image'
+        default: 'app-image'
         type: choice
         options:
-          - frontend-image
-          - backend-image
+          - app-image
+          - app2-image
   push:
     branches:
       - main
@@ -43,7 +43,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          ROLE_ARN: arn:aws:iam::139023234293:role/GithubOIDC
+          ROLE_ARN: arn:aws:iam::139023234293:role/InfraDeployerRole
+          region: ap-southeast-2
           
 
       - name: Login to Amazon ECR
