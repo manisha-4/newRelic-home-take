@@ -1,64 +1,58 @@
 # Deployment Runbook
 
-Step-by-step guide to deploy, verify, and roll back the `cass-tutorial` web app.
-Written so someone who did not build it can run it at 2am.
+This runbook explains how to deploy, verify, and roll back the sample-app service. The application is a small Flask-based API running in AWS ECS Fargate behind an Application Load Balancer and backed by Amazon ECR.
 
 ## 1. Prerequisites
 
 **Tools**
-- Terraform >= 1.5
+- Terraform 1.9 or newer
 - AWS CLI v2
-- Docker (to build/push the app image)
+- Docker
 - Git
 
-**Credentials & permissions**
-- AWS access key + secret for an IAM principal in the target account.
-  - For `terraform plan` only: `ReadOnlyAccess` is enough.
-  - For `terraform apply`: permissions for ECR, ECS, IAM (create role + attach policy),
-    CloudWatch Logs, and EC2 (security groups) plus VPC/subnet read.
-- The target account must have an existing **default VPC** with at least one subnet.
+**Credentials and permissions**
+- For local deployment, set an AWS access key and secret key for an IAM principal that can manage ECS, ECR, IAM, CloudWatch Logs, and networking resources.
+- For GitHub deployment, use an AWS IAM role that GitHub Actions can assume through OIDC. This role should include the permissions needed for Terraform apply and image rollout.
+- The target account must have an existing VPC and subnet set available for the deployment.
 
 **Local setup**
 ```bash
-export AWS_ACCESS_KEY_ID="..."
-export AWS_SECRET_ACCESS_KEY="..."
-export AWS_DEFAULT_REGION="us-east-1"
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_DEFAULT_REGION="ap-southeast-2"
 ```
 
-## 2. Deploy
+## 2. Deploy locally
 
-### Option A — via GitHub Actions (recommended)
-1. Ensure repo secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are set.
-2. Merge your change into `main`.
-3. Watch the **Terraform** workflow → the `Apply` step deploys.
-
-### Option B — locally
+### Option A — deploy infrastructure with Terraform
 ```bash
 cd terraform
 terraform init
-
-# 1. Create the ECR repo first.
-terraform apply -target=aws_ecr_repository.app
-
-# 2. Build & push the image.
-REPO=$(terraform output -raw ecr_repository_url)
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "${REPO%/*}"
-docker build -t "$REPO:latest" ../app
-docker push "$REPO:latest"
-
-# 3. Deploy everything.
-terraform apply    # type "yes" to confirm
+terraform plan -var="environment=devl" -var="vpc_id=vpc-03ce369b7374fd1e6"
+terraform apply -var="environment=devl" -var="vpc_id=vpc-03ce369b7374fd1e6"
 ```
 
-## 3. Deploying to different environments (dev / staging / prod)
-
-Environment is a variable. Use a per-environment tfvars file or `-var`:
+### Option B — build and push the application image
 ```bash
-terraform apply -var="environment=staging"
-# or
-terraform apply -var-file=staging.tfvars
+cd ../app
+docker build -t sample-app:latest .
+aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com
+docker tag sample-app:latest <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/sample-app-devl:latest
+docker push <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/sample-app-devl:latest
 ```
-For real isolation, run each environment against its own state backend / AWS account.
+
+The Terraform configuration uses the image tag supplied in the variables file so that ECS runs the pushed image.
+
+## 3. Deploy through GitHub Actions
+
+GitHub Actions is the preferred workflow for repeatable deployments.
+
+1. Ensure the repository is connected to an AWS role that GitHub can assume through OIDC.
+2. Push changes to the target branch.
+3. Trigger the workflow from the GitHub Actions UI or by merge to the main branch.
+4. The workflow runs Terraform, pushes the image to ECR if needed, and updates the ECS service.
+
+This path is preferred because it uses the AWS role directly and avoids storing long-lived AWS secrets in GitHub.
 
 ## 4. Verify the deployment
 
@@ -66,41 +60,38 @@ For real isolation, run each environment against its own state backend / AWS acc
 CLUSTER=$(terraform output -raw cluster_name)
 SERVICE=$(terraform output -raw service_name)
 
-# Service should report runningCount == desiredCount.
 aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
   --query 'services[0].{running:runningCount,desired:desiredCount,status:status}'
-
-# Find the task's public IP, then curl it (expect the nginx welcome page).
-TASK=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --query 'taskArns[0]' --output text)
-ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" \
-  --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
-aws ec2 describe-network-interfaces --network-interface-ids "$ENI" \
-  --query 'NetworkInterfaces[0].Association.PublicIp' --output text
 ```
-Then `curl http://<public-ip>:8080/health` (expect `{"status":"ok"}`).
-Also check container logs in CloudWatch under `/ecs/<project>-<env>`.
 
-## 5. Rollback
+You can also test the public endpoint:
 
-- **Bad change not yet applied:** close/revert the PR — nothing is live.
-- **Bad change applied:** revert the commit on `main` and let the pipeline re-apply
-  the previous known-good state, or locally:
-  ```bash
-  git revert <bad-commit> && git push
-  ```
-- **Full teardown:**
-  ```bash
-  cd terraform
-  terraform destroy
-  ```
+```bash
+curl http://<alb-dns-name>/
+curl http://<alb-dns-name>/health
+```
 
-## 6. Common issues & troubleshooting
+A successful response should include the sample-app JSON message and a health status of `ok`.
+
+## 5. Roll back or destroy
+
+- For a safe rollback, revert the application change or Terraform change and re-run the pipeline.
+- To remove the deployment completely:
+
+```bash
+cd terraform
+terraform destroy -var="environment=devl" -var="vpc_id=vpc-03ce369b7374fd1e6"
+```
+
+## 6. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `no matching EC2 VPC found` | Account has no default VPC | Create a default VPC or point the data source at an existing one |
-| `UnauthorizedOperation` / `AccessDenied` on apply | Credentials are read-only | Use a role/keys with ECS + IAM write permissions |
-| Task stuck in `PENDING` / stopping | Can't pull image or no route to internet | Confirm public subnet + `assign_public_ip=true`; check image name |
-| Pipeline fails at `fmt -check` | Unformatted code | Run `terraform fmt -recursive` and commit |
-| App not reachable | SG blocks you / task still starting | Wait ~1 min; confirm your IP matches `allowed_http_cidr` |
-| `Error acquiring state lock` | Concurrent run | Wait or `terraform force-unlock <id>` |
+| Access denied during apply | Local AWS keys do not have enough permissions | Use an IAM principal with ECS, ECR, IAM, and networking permissions |
+| GitHub workflow cannot assume the AWS role | OIDC trust policy or role permissions are incorrect | Verify the GitHub repository and role trust relationship |
+| Task stays pending | The container image was not pulled successfully | Confirm the ECR image exists and the task execution role can pull it |
+| Application is unreachable | Security group or target group health check is failing | Check ALB target group health and the container port |
+
+## 7. Future scope
+
+The deployment is a working baseline for sample-app. The next phase can add HTTPS, a managed database, autoscaling, and a stronger production-grade networking layout.

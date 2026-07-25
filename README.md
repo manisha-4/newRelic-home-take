@@ -1,118 +1,97 @@
-# cass-tutorial — AWS ECS Fargate App via Terraform + GitHub Actions
+# sample-app — AWS ECS Fargate deployment with Terraform and GitHub Actions
 
-A minimal, production-minded example that deploys a basic containerized app to
-**AWS ECS Fargate** using Terraform, with a GitHub Actions pipeline that runs
-`terraform plan` on every pull request and deploys (`terraform apply`) on merge to
-`main`.
+sample-app is a lightweight containerized web application that demonstrates a full cloud-native deployment path on AWS. The application is a small Python Flask API that serves a friendly response on the root endpoint and a health check endpoint for readiness and monitoring.
 
-## What is being deployed (and why)
+## What the project deploys
 
-A small **Python (Flask) HTTP API** packaged as a Docker image and run as a
-single-task **ECS Fargate service**. It exposes `/` (a JSON hello message) and
-`/health` (a health check).
+This repository provisions a production-style deployment for sample-app on AWS using:
 
-- **Why this app?** It is a real, self-contained service (own code + Dockerfile)
-  that is still tiny enough to reason about. It proves the full path: build image →
-  push to ECR → run on Fargate → serve traffic → ship logs.
-- **Why Fargate (not EC2/Lambda)?** Fargate runs containers with **no servers to
-  manage** and no capacity to patch. It is the simplest way to run a container on
-  AWS and mirrors how most teams ship services today.
-- **Why build our own image?** The container image is the deployable artifact; CI
-  builds it, pushes it to **ECR**, and ECS runs that exact tagged image.
+- an **Amazon ECR repository** for the application image
+- an **Amazon ECS Fargate cluster** and service
+- an **Application Load Balancer** and target group for HTTP traffic
+- **IAM roles and policies** for container execution and GitHub-based deployment
+- **CloudWatch Logs** for container observability
+- **Terraform** for infrastructure as code and **GitHub Actions** for automation
 
-## AWS architecture (and why)
+The deployed app is a simple Flask service that exposes:
 
-```
-                 Internet
-                    │  HTTP :80
-          ┌─────────▼──────────┐
-          │  Security Group    │  ingress 80, egress all
-          └─────────┬──────────┘
-   Existing VPC     │
-   (default)  ┌─────▼───────────────┐
-              │ ECS Fargate Service │  awsvpc, public IP
-              │   └─ Task (nginx)   │──▶ CloudWatch Logs
-              └─────────────────────┘
-```
+- `/` — returns a JSON message identifying the application and environment
+- `/health` — returns a health response used by the load balancer and monitoring checks
 
-- **Reuses the existing (default) VPC** and its subnets via data sources — the
-  config **never creates a VPC**.
-- **App image is stored in ECR** and referenced by immutable commit-SHA tag.
-- **Fargate launch type**, so there are no EC2 hosts to manage.
-- **Least-privilege IAM:** only a task execution role (pull image + write logs)
-  via the AWS-managed `AmazonECSTaskExecutionRolePolicy`.
-- **Observability built in:** container logs stream to a CloudWatch log group.
-- **Consistent tagging** via provider `default_tags` (Project / Environment / ManagedBy).
+## Application flow
 
-## Repository layout
+1. The developer updates the application code or infrastructure configuration.
+2. The Docker image is built locally or in GitHub Actions.
+3. The image is pushed to Amazon ECR.
+4. Terraform provisions or updates the ECS service so the new image runs on Fargate.
+5. The ALB forwards traffic to the running container, and logs are published to CloudWatch.
 
-```
-.
-├── .github/workflows/terraform.yml   # CI/CD: infra job (plan/apply) + image job (ECR)
-├── app/
-│   ├── app.py                         # Flask app (/ and /health)
-│   ├── requirements.txt
-│   └── Dockerfile
-├── terraform/
-│   ├── versions.tf                   # provider + version pins, default tags
-│   ├── variables.tf                  # inputs
-│   ├── data.tf                       # existing VPC + subnets
-│   ├── main.tf                       # ECR, cluster, IAM, logs, task def, service, SG
-│   ├── outputs.tf                    # cluster/service/task-def, ecr url, vpc_id
-│   └── terraform.tfvars.example      # sample values
-├── README.md
-├── RUNBOOK.md
-└── TEAM_UPDATE.md
-```
+This gives a complete end-to-end workflow for building, shipping, and running a containerized service in AWS.
 
-## How to use the Terraform
+## Local deployment flow
+
+Local deployment uses AWS access credentials directly.
 
 ```bash
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_DEFAULT_REGION="ap-southeast-2"
+
 cd terraform
-cp terraform.tfvars.example terraform.tfvars   # optional; edit as needed
 terraform init
-terraform plan
-terraform apply
+terraform plan -var="environment=devl" -var="vpc_id=vpc-03ce369b7374fd1e6"
+terraform apply -var="environment=devl" -var="vpc_id=vpc-03ce369b7374fd1e6"
 ```
 
-## How to use the GitHub Actions pipeline
-
-The workflow has two jobs:
-
-1. **Infrastructure** (`terraform`) — runs `fmt`, `init`, `validate`, and `plan` on
-   every PR; on merge to `main` it runs `apply` to provision the ECR repo, ECS
-   cluster, task definition, and service.
-2. **Image upload to ECR** (`image`) — runs after the infrastructure job on merge to
-   `main`: builds the Docker image, pushes it to ECR (tagged with the commit SHA and
-   `latest`), and forces a new ECS deployment to roll it out.
-
-Add repository secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` first.
-
-## Run the app locally
+After the infrastructure is ready, build and push the image:
 
 ```bash
-cd app
-docker build -t cass-tutorial .
-docker run -p 8080:8080 cass-tutorial
-curl localhost:8080/        # {"message":"Hello from cass-tutorial!",...}
-curl localhost:8080/health  # {"status":"ok"}
+cd ../app
+docker build -t sample-app:latest .
+aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com
+docker tag sample-app:latest <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/sample-app-devl:latest
+docker push <account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/sample-app-devl:latest
 ```
 
-## Trade-offs I made
+## GitHub deployment flow
 
-- **No load balancer.** Tasks get a public IP directly to keep the demo minimal.
-  This means the public IP changes if the task is replaced.
-- **Local state**, not remote. Simplest for a time-boxed task; production should use
-  an S3 backend with DynamoDB locking.
-- **Static AWS keys** as GitHub secrets (as the assignment specifies). Production
-  should use **GitHub OIDC → IAM role** so no long-lived keys are stored.
-- **`allowed_http_cidr` defaults to `0.0.0.0/0`** for easy testing; lock this down
-  in real environments.
+GitHub Actions uses an AWS IAM role through OIDC instead of long-lived secrets. The workflow assumes the deployment role and runs Terraform and image deployment steps from the repository.
 
-## What I would change for production
+This makes the GitHub pipeline suitable for:
 
-- Front the service with an **Application Load Balancer** (stable DNS + health checks)
-  and place tasks in private subnets.
-- Remote state (S3 + DynamoDB lock) and per-environment backends.
-- OIDC-based authentication instead of static keys.
-- Autoscaling on CPU/memory, HTTPS via ACM, and CloudWatch alarms/dashboards.
+- automated infrastructure changes
+- image build and push to ECR
+- ECS service updates from the latest application version
+
+## Repository structure
+
+```text
+.
+├── app/                  # Flask application and Dockerfile
+├── terraform/            # Terraform configuration for ECS, ECR, ALB, IAM, networking
+├── .github/workflows/    # GitHub Actions workflow for deployment
+├── README.md             # overview and architecture summary
+├── RUNBOOK.md            # deployment and rollback steps
+└── TEAM_UPDATE.md        # project status summary
+```
+
+## Why this solution exists
+
+sample-app is a foundational example for teams that want to learn or standardize on:
+
+- container-based deployment on AWS
+- infrastructure as code with Terraform
+- automated delivery through GitHub Actions
+- observability with logs and health checks
+- a repeatable path from code commit to live service
+
+## Future scope
+
+The current setup is intentionally simple and demo-friendly. Future enhancements could include:
+
+- HTTPS with an Application Load Balancer and ACM certificate
+- private subnets and stronger network isolation
+- autoscaling based on CPU and memory utilization
+- database or cache integration for a more realistic service
+- separate environments for development, staging, and production
+- CI validation for linting, security scanning, and deployment checks

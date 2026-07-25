@@ -27,7 +27,7 @@ permissions:
 
 env:
   TF_IN_AUTOMATION: true
-  TF_STATE_BUCKET: ${{ vars.TERRAFORM_DEPLOYMENT_BUCKET }}
+  TF_STATE_BUCKET: app-terraform-statefiles
   TF_STATE_KEY: ${{ github.event.inputs.environment }}/terraform.tfstate
 
 jobs:
