@@ -58,7 +58,7 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        if: ${{ github.event.inputs.operation == 'plan' }}
+        # if: ${{ github.event.inputs.operation == 'plan' }}
         working-directory: terraform
         run: terraform plan -var="environment=${{ github.event.inputs.environment }}" -var="vpc_id=vpc-03ce369b7374fd1e6" -out=tfplan
 
