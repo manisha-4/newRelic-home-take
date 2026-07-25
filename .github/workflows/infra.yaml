@@ -25,6 +25,11 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  TF_IN_AUTOMATION: true
+  TF_STATE_BUCKET: ${{ vars.TERRAFORM_DEPLOYMENT_BUCKET }}
+  TF_STATE_KEY: ${{ github.event.inputs.environment }}/terraform.tfstate
+
 jobs:
   Infrastructure:
     name: Deploy Infrastructure with Terraform
@@ -50,14 +55,18 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         run: |
-          terraform init \
-            -backend-config="bucket=${{ vars.TERRAFORM_DEPLOYMENT_BUCKET }}" \
-            -backend-config="key=${{ github.event.inputs.environment }}/terraform.tfstate" \
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
             -backend-config="region=ap-southeast-2"
 
       - name: Terraform Validate
         working-directory: terraform
         run: terraform validate
+
+      - name: Terraform State Check
+        working-directory: terraform
+        run: terraform state list
 
       - name: Terraform Plan
         working-directory: terraform
@@ -66,7 +75,7 @@ jobs:
       - name: Terraform Apply
         if: ${{ github.event.inputs.operation == 'apply' }}
         working-directory: terraform
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply -auto-approve -input=false tfplan
 
   Destroy:
     name: Destroy Infrastructure with Terraform
@@ -92,16 +101,15 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         run: |
-          terraform init \
-            -backend-config="bucket=${{ vars.TERRAFORM_DEPLOYMENT_BUCKET }}" \
-            -backend-config="key=${{ github.event.inputs.environment }}/terraform.tfstate" \
+          terraform init -reconfigure \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
             -backend-config="region=ap-southeast-2"
 
-      - name: Terraform Plan
+      - name: Terraform State Check
         working-directory: terraform
-        run: terraform plan -destroy -var="environment=${{ github.event.inputs.environment }}" -var="vpc_id=vpc-03ce369b7374fd1e6" -out=tfplan
-
+        run: terraform state list
 
       - name: Terraform Destroy
         working-directory: terraform
-        run: terraform apply -auto-approve  tfplan
+        run: terraform destroy -auto-approve -input=false -var="environment=${{ github.event.inputs.environment }}" -var="vpc_id=vpc-03ce369b7374fd1e6"
