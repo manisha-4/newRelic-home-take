@@ -44,6 +44,25 @@ resource "aws_iam_role_policy_attachment" "execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy" "execution_ecr_pull" {
+  name = "${local.name}-execution-ecr-pull"
+  role = aws_iam_role.execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:GetAuthorizationToken"
+      ]
+      Resource = [aws_ecr_repository.app.arn]
+    }]
+  })
+}
+
 resource "aws_iam_policy" "ecr_push" {
   name        = "${local.name}-ecr-push"
   description = "Allow the GitHub Actions role to push container images to ECR"
